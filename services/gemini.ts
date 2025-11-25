@@ -7,26 +7,29 @@ const MODEL_NAME = "gemini-2.5-flash";
 
 // --- Tools Definition ---
 const checkMosesLogsDeclaration: FunctionDeclaration = {
-  name: 'checkMosesLogs',
-  description: 'Queries the Moses/Foxtrot logging system to check merchant transaction logs, success rates (SR), and block statuses.',
+  name: "checkMosesLogs",
+  description:
+    "Queries the Moses/Foxtrot logging system to check merchant transaction logs, success rates (SR), and block statuses.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       queryType: {
         type: Type.STRING,
         enum: [
-          MosesQueryType.TRANSACTION_STATS, 
-          MosesQueryType.FRA_BLOCKS, 
-          MosesQueryType.INTEGRATION_HEALTH
+          MosesQueryType.TRANSACTION_STATS,
+          MosesQueryType.FRA_BLOCKS,
+          MosesQueryType.INTEGRATION_HEALTH,
         ],
-        description: 'The type of log analysis to perform based on the user complaint.',
+        description:
+          "The type of log analysis to perform based on the user complaint.",
       },
       merchantId: {
         type: Type.STRING,
-        description: 'The merchant identifier (if available, otherwise use "current_merchant").',
-      }
+        description:
+          'The merchant identifier (if available, otherwise use "current_merchant").',
+      },
     },
-    required: ['queryType'],
+    required: ["queryType"],
   },
 };
 
@@ -38,12 +41,16 @@ class MerchantFirstAidService {
   private chatSession: any;
 
   constructor() {
-    // Ensure API Key is present
-    const apiKey = process.env.GEMINI_API_KEY;
+    // Ensure API Key is present.
+    // Note: In Vite, use import.meta.env.VITE_API_KEY.
+    // Check if process.env is defined (Node) or fallback to Vite style for local dev.
+    const apiKey =
+      process.env.API_KEY || (import.meta as any).env?.VITE_API_KEY;
+
     if (!apiKey) {
-      console.error("GEMINI_API_KEY is missing from environment variables.");
+      console.error("API_KEY is missing. Set VITE_API_KEY in .env");
     }
-    this.ai = new GoogleGenAI({ apiKey: apiKey || '' });
+    this.ai = new GoogleGenAI({ apiKey: apiKey || "" });
   }
 
   // Initialize a new chat session with specific system instructions
@@ -52,7 +59,7 @@ class MerchantFirstAidService {
       model: MODEL_NAME,
       config: {
         systemInstruction: `
-          You are 'MerchantBot', a specialized Level 1 Support AI for a Payment Gateway.
+          You are 'PhonePe MerchantBot', a specialized Level 1 Support AI for a Payment Gateway.
           Your goal is to diagnose merchant issues by querying the 'Moses' logging tool (via the checkMosesLogs tool).
 
           Process:
@@ -68,13 +75,13 @@ class MerchantFirstAidService {
           - If last_error_code is 'INVALID_SIGNATURE', tell them to check their secret keys.
         `,
         tools: tools,
-      }
+      },
     });
   }
 
   // Main interaction loop
   async sendMessage(
-    userMessage: string, 
+    userMessage: string,
     onToolCall?: (toolName: string, result: string) => void
   ): Promise<string> {
     if (!this.chatSession) this.startNewSession();
@@ -82,47 +89,56 @@ class MerchantFirstAidService {
     try {
       // 1. Send message to model
       let result = await this.chatSession.sendMessage({ message: userMessage });
-      
+
       // 2. Loop to handle potential function calls (Model might want to think, then call tool, then think again)
       // Gemini 2.5 Flash handles tool calls via the `functionCalls` property in the response.
-      // The SDK's Chat object automatically maintains history, but we need to execute the function and send the response back.
-      
+
       while (result.functionCalls && result.functionCalls.length > 0) {
         const call = result.functionCalls[0]; // Assuming single tool call for simplicity
-        
+
         // Execute the mock function
-        if (call.name === 'checkMosesLogs') {
+        if (call.name === "checkMosesLogs") {
           const args = call.args as any;
           const queryType = args.queryType as MosesQueryType;
           const merchantId = args.merchantId || "current_merchant";
-          
+
           // Notify UI that we are running a tool
-          if (onToolCall) onToolCall("Moses System (Foxtrot Logs)", `Querying ${queryType}...`);
+          if (onToolCall)
+            onToolCall(
+              "Moses System (Foxtrot Logs)",
+              `Querying ${queryType}...`
+            );
 
           // Call the mock service
-          const toolResult: MosesLogResult = await queryMoses(merchantId, queryType);
+          const toolResult: MosesLogResult = await queryMoses(
+            merchantId,
+            queryType
+          );
           const toolResultStr = JSON.stringify(toolResult);
 
-          if (onToolCall) onToolCall("Moses System (Foxtrot Logs)", `Result: ${toolResultStr}`);
+          if (onToolCall)
+            onToolCall(
+              "Moses System (Foxtrot Logs)",
+              `Result: ${toolResultStr}`
+            );
 
           // Send the tool output back to Gemini
+          // FIXED: Use `functionResponse` instead of `toolResponse` structure for Chat.sendMessage
           result = await this.chatSession.sendMessage({
-            message: [{
-              toolResponse: {
-                functionResponses: [{
+            message: [
+              {
+                functionResponse: {
                   name: call.name,
-                  id: call.id,
-                  response: { result: toolResult }
-                }]
-              }
-            }]
+                  response: { result: toolResult },
+                },
+              },
+            ],
           });
         }
       }
 
       // 3. Return final text response
       return result.text;
-      
     } catch (error) {
       console.error("Gemini Error:", error);
       return "I'm having trouble connecting to the diagnostic server. Please contact human support.";
@@ -130,9 +146,13 @@ class MerchantFirstAidService {
   }
 
   // Generate a summary for the Freshdesk Ticket (Private Note)
-  async generateTicketSummary(chatHistory: {role: string, text: string}[]): Promise<string> {
-    const historyText = chatHistory.map(m => `${m.role}: ${m.text}`).join('\n');
-    
+  async generateTicketSummary(
+    chatHistory: { role: string; text: string }[]
+  ): Promise<string> {
+    const historyText = chatHistory
+      .map((m) => `${m.role}: ${m.text}`)
+      .join("\n");
+
     const summaryModel = this.ai.models;
     const response = await summaryModel.generateContent({
       model: MODEL_NAME,
@@ -147,9 +167,9 @@ class MerchantFirstAidService {
         
         Transcript:
         ${historyText}
-      `
+      `,
     });
-    
+
     return response.text;
   }
 }
