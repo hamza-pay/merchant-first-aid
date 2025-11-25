@@ -39,9 +39,9 @@ class MerchantFirstAidService {
 
   constructor() {
     // Ensure API Key is present
-    const apiKey = process.env.API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      console.error("API_KEY is missing from environment variables.");
+      console.error("GEMINI_API_KEY is missing from environment variables.");
     }
     this.ai = new GoogleGenAI({ apiKey: apiKey || '' });
   }
