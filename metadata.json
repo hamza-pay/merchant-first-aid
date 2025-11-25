@@ -1,0 +1,5 @@
+{
+  "name": "Merchant First-Aid",
+  "description": "An AI-powered diagnostic layer between Merchants and L1 Support that autonomously queries logs (Moses) to provide context-aware tickets.",
+  "requestFramePermissions": []
+}
